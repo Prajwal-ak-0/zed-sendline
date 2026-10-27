@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: python3 scripts/preflight.py
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy -p sendline --all-targets --locked -- -D warnings
+      - run: cargo test -p sendline --locked
+      - run: cargo build -p sendline --locked
+      - run: python3 scripts/verify.py target/debug/sendline
+      - run: cargo clippy -p sendline-extension --target wasm32-wasip2 --locked -- -D warnings
+      - run: cargo build -p sendline-extension --target wasm32-wasip2 --locked
+
+  install:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/package.sh
+      - run: python3 scripts/verify_install.py

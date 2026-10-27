@@ -1,0 +1,12 @@
+{
+  "languages": {
+    "HTTP": {
+      "enable_language_server": true,
+      "language_servers": [
+        "sendline"
+      ],
+      "show_edit_predictions": false
+    }
+  },
+  "code_lens": "on"
+}

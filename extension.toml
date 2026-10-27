@@ -1,0 +1,15 @@
+id = "sendline"
+name = "Sendline"
+version = "0.5.0"
+schema_version = 1
+authors = ["Prajwal", "Daniel Roisch <doani@freenet.de>"]
+description = "Run .http requests locally and view formatted responses in Zed."
+repository = "https://github.com/Prajwal-ak-0/zed-sendline"
+
+[grammars.http]
+repository = "https://github.com/rest-nvim/tree-sitter-http"
+rev = "db8b4398de90b6d0b6c780aba96aaa2cd8e9202c"
+
+[language_servers.sendline]
+name = "Sendline"
+languages = ["HTTP"]

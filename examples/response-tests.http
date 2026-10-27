@@ -1,0 +1,26 @@
+@baseUrl = http://127.0.0.1:8787
+
+### Get and test a user
+GET {{baseUrl}}/api/users/me
+Accept: application/json
+
+> {%
+client.test("Get current user", function () {
+    client.assert(response.status === 200, "Expected HTTP 200");
+    client.assert(response.body.user.id === 1, "Expected the demo user");
+    client.global.set("currentUserId", response.body.user.id);
+});
+client.test("JSON response", function () {
+    client.assert(response.contentType.mimeType === "application/json");
+});
+%}
+
+### Use the saved variable in another request
+GET {{baseUrl}}/api/users/{{currentUserId}}
+
+> {%
+client.test("Saved variable was used", function () {
+    client.assert(response.status === 200, "Expected HTTP 200");
+    client.assert(response.body.path === "/api/users/1", "Run the first request to save the user ID");
+});
+%}

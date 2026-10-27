@@ -1,0 +1,19 @@
+[workspace]
+members = [".", "client"]
+resolver = "2"
+
+[package]
+name = "sendline-extension"
+version = "0.5.0"
+edition = "2024"
+description = "Local .http request runner for Zed"
+authors = ["Prajwal", "Daniel Roisch <doani@freenet.de>"]
+license = "MIT"
+repository = "https://github.com/Prajwal-ak-0/zed-sendline"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+zed_extension_api = "0.1.0"
+sha2 = "0.10"

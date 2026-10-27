@@ -1,0 +1,23 @@
+@baseUrl = http://127.0.0.1:8787
+
+### Get current user
+GET {{baseUrl}}/api/users/me
+Accept: application/json
+
+### Create a user
+POST {{baseUrl}}/api/users
+Content-Type: application/json
+
+{
+  "name": "Test User",
+  "role": "admin"
+}
+
+### Update a user
+PATCH {{baseUrl}}/api/users/1
+Content-Type: application/json
+
+{"role": "viewer"}
+
+### Delete a user
+DELETE {{baseUrl}}/api/users/1
