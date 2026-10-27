@@ -18,7 +18,7 @@ def main():
     parser.add_argument('--tag')
     args = parser.parse_args()
     release = version(ROOT / 'extension.toml')
-    assert version(ROOT / 'Cargo.toml') == version(ROOT / 'client/Cargo.toml') == release, 'Version mismatch'
+    assert version(ROOT / 'Cargo.toml') == version(ROOT / 'crates/sendline/Cargo.toml') == release, 'Version mismatch'
     assert args.tag in (None, 'v' + release), 'Release tag must match the manifest'
     manifest = (ROOT / 'extension.toml').read_text()
     assert 'id = "sendline"' in manifest
@@ -28,7 +28,7 @@ def main():
     assert task['reveal'] == 'no_focus' and task['save'] == 'current'
     assert task['shell']['program'] == '/bin/sh'
     files = [ROOT / name for name in ['Cargo.toml', 'extension.toml', 'README.md', 'CONTRIBUTING.md']]
-    for directory in ['src', 'client', 'languages', 'examples', 'scripts', 'docs', '.github']:
+    for directory in ['src', 'crates', 'tests', 'languages', 'examples', 'scripts', 'docs', '.github']:
         files.extend(path for path in (ROOT / directory).rglob('*') if path.is_file() and '__pycache__' not in path.parts)
     for path in files:
         assert path.name != 'http-client.private.env.json', f'Private environment in source: {path}'

@@ -1,5 +1,5 @@
 //! Private response-script variables, isolated by project and environment.
-use crate::storage::Storage;
+use crate::state::Storage;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};

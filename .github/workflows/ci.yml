@@ -28,7 +28,7 @@ jobs:
       - run: cargo clippy -p sendline --all-targets --locked -- -D warnings
       - run: cargo test -p sendline --locked
       - run: cargo build -p sendline --locked
-      - run: python3 scripts/verify.py target/debug/sendline
+      - run: python3 tests/integration.py target/debug/sendline
       - run: cargo clippy -p sendline-extension --target wasm32-wasip2 --locked -- -D warnings
       - run: cargo build -p sendline-extension --target wasm32-wasip2 --locked
 
@@ -41,4 +41,4 @@ jobs:
           targets: wasm32-wasip2
       - uses: Swatinem/rust-cache@v2
       - run: scripts/package.sh
-      - run: python3 scripts/verify_install.py
+      - run: python3 tests/installation.py

@@ -1,8 +1,12 @@
 //! Zed document state and environment controls. Request execution belongs to the native task.
 use crate::{
-    environment,
-    globals::{self, Globals},
-    parser, runner, script, storage,
+    request::{self, environment},
+    response::script,
+    runner,
+    state::{
+        self,
+        globals::{self, Globals},
+    },
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -24,28 +28,28 @@ struct Backend {
 }
 
 struct EditorState {
-    documents: RwLock<HashMap<Url, String>>,
+    documents: RwLock<HashMap<Url, Document>>,
     expanded: RwLock<HashSet<Url>>,
-    storage: storage::Storage,
+    storage: state::Storage,
     shutdown: watch::Sender<bool>,
 }
 
-impl Backend {
-    async fn file(&self, uri: &Url) -> anyhow::Result<parser::HttpFile> {
-        let documents = self.state.documents.read().await;
-        Ok(parser::parse_http_file(documents.get(uri).ok_or_else(
-            || anyhow::anyhow!("Open the .http file first"),
-        )?))
-    }
+#[derive(Clone)]
+struct Document {
+    text: String,
+    version: i32,
+}
 
+impl Backend {
     async fn commands(&self, uri: &Url) -> anyhow::Result<Vec<Command>> {
         // Environment controls must survive syntax errors while editing requests.
         let hint = {
             let documents = self.state.documents.read().await;
-            parser::environment_hint(
-                documents
+            request::environment_hint(
+                &documents
                     .get(uri)
-                    .ok_or_else(|| anyhow::anyhow!("Open the .http file first"))?,
+                    .ok_or_else(|| anyhow::anyhow!("Open the .http file first"))?
+                    .text,
             )
         };
         let path = uri
@@ -148,21 +152,31 @@ impl LanguageServer for Backend {
         Ok(())
     }
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        self.state
-            .documents
-            .write()
-            .await
-            .insert(params.text_document.uri.clone(), params.text_document.text);
+        self.state.documents.write().await.insert(
+            params.text_document.uri.clone(),
+            Document {
+                text: params.text_document.text,
+                version: params.text_document.version,
+            },
+        );
         self.diagnostics(params.text_document.uri).await;
         let _ = self.client.code_lens_refresh().await;
     }
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
         if let Some(change) = params.content_changes.pop() {
-            self.state
-                .documents
-                .write()
-                .await
-                .insert(params.text_document.uri.clone(), change.text);
+            {
+                let mut documents = self.state.documents.write().await;
+                let Some(document) = documents.get_mut(&params.text_document.uri) else {
+                    return;
+                };
+                if params.text_document.version <= document.version {
+                    return;
+                }
+                *document = Document {
+                    text: change.text,
+                    version: params.text_document.version,
+                };
+            }
             self.diagnostics(params.text_document.uri).await;
             let _ = self.client.code_lens_refresh().await;
         }
@@ -194,10 +208,11 @@ impl LanguageServer for Backend {
         // Anchor inside the first nonempty line so the header remains separate
         // from every request's native gutter button, even at the start of a file.
         let documents = self.state.documents.read().await;
-        let Some(text) = documents.get(&uri) else {
+        let Some(document) = documents.get(&uri) else {
             return Ok(Some(vec![]));
         };
-        let (line, content) = text
+        let (line, content) = document
+            .text
             .lines()
             .enumerate()
             .find(|(_, line)| !line.is_empty())
@@ -282,19 +297,33 @@ fn invalid(error: anyhow::Error) -> Error {
 
 impl Backend {
     async fn diagnostics(&self, uri: Url) {
-        let diagnostics = match self.validate_document(&uri).await {
+        let Some(document) = self.state.documents.read().await.get(&uri).cloned() else {
+            return;
+        };
+        let diagnostics = match self.validate_document(&uri, &document) {
             Ok(diagnostics) => diagnostics,
             Err(error) => vec![diagnostic(error.to_string(), 0)],
         };
-        self.client
-            .publish_diagnostics(uri, diagnostics, None)
-            .await;
+        // Discard work for a changed or closed document. The version also lets
+        // the editor reject an older notification already in its message queue.
+        if self
+            .state
+            .documents
+            .read()
+            .await
+            .get(&uri)
+            .is_some_and(|current| current.version == document.version)
+        {
+            self.client
+                .publish_diagnostics(uri, diagnostics, Some(document.version))
+                .await;
+        }
     }
 }
 
 impl Backend {
-    async fn validate_document(&self, uri: &Url) -> anyhow::Result<Vec<Diagnostic>> {
-        let file = self.file(uri).await?;
+    fn validate_document(&self, uri: &Url, document: &Document) -> anyhow::Result<Vec<Diagnostic>> {
+        let file = request::parse_http_file(&document.text);
         let path = uri
             .to_file_path()
             .map_err(|_| anyhow::anyhow!("Save the .http file first"))?;
@@ -318,7 +347,7 @@ impl Backend {
             .requests
             .iter()
             .filter_map(|request| {
-                crate::http_client::build_request(&client, request, &variables)
+                crate::transport::build_request(&client, request, &variables)
                     .err()
                     .map(|error| diagnostic(error.to_string(), request.line))
             })
@@ -349,7 +378,7 @@ fn diagnostic(message: String, line: u32) -> Diagnostic {
     }
 }
 
-pub async fn run(storage: storage::Storage) -> anyhow::Result<()> {
+pub async fn run(storage: state::Storage) -> anyhow::Result<()> {
     #[cfg(unix)]
     storage.register_runner()?;
     let (service, socket) = LspService::new(|client| Backend {

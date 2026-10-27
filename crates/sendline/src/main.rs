@@ -1,15 +1,11 @@
 //! Native HTTP client entry point. All protocol output stays in its owning adapter.
 mod cli;
-mod environment;
-mod globals;
-mod http_client;
-mod lsp;
-mod output;
-mod parser;
+mod editor;
+mod request;
+mod response;
 mod runner;
-mod script;
-mod storage;
-mod variables;
+mod state;
+mod transport;
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {

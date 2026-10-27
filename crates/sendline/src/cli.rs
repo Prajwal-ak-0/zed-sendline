@@ -1,5 +1,5 @@
 //! Command-line parsing is the boundary between Zed tasks and the request runner.
-use crate::{lsp, runner, storage::Storage};
+use crate::{editor, runner, state::Storage};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -49,7 +49,7 @@ pub async fn run() -> Result<bool> {
                     "The Zed extension requires Sendline {expected}. Update your custom binary or remove the executable override."
                 );
             }
-            lsp::run(storage).await?;
+            editor::run(storage).await?;
             Ok(true)
         }
     }

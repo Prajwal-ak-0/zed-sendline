@@ -3,8 +3,6 @@
 import json
 import os
 from pathlib import Path
-import queue
-import re
 import signal
 import subprocess
 import sys
@@ -13,106 +11,10 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from support.lsp import Lsp
+
 ROOT = Path(__file__).resolve().parents[1]
 
-
-class Lsp:
-    def __init__(self, executable, environment):
-        version = re.search(r'^version = "([^"]+)"', (ROOT / 'extension.toml').read_text(), re.M)[1]
-        self.process = subprocess.Popen([str(executable), 'lsp', '--extension-version', version], stdin=subprocess.PIPE,
-                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment)
-        self.messages = queue.Queue()
-        self.notifications = []
-        self.next_id = 0
-        threading.Thread(target=self.read, daemon=True).start()
-
-    def read(self):
-        try:
-            while True:
-                headers = {}
-                while True:
-                    line = self.process.stdout.readline()
-                    if not line:
-                        raise EOFError('Language server exited')
-                    if line == b'\r\n':
-                        break
-                    name, value = line.decode().split(':', 1)
-                    headers[name.lower()] = value.strip()
-                self.messages.put(json.loads(self.process.stdout.read(int(headers['content-length']))))
-        except Exception as error:
-            self.messages.put(error)
-
-    def send(self, value):
-        body = json.dumps({'jsonrpc': '2.0', **value}).encode()
-        self.process.stdin.write(f'Content-Length: {len(body)}\r\n\r\n'.encode() + body)
-        self.process.stdin.flush()
-
-    def notify(self, method, params):
-        self.send({'method': method, **({'params': params} if params is not None else {})})
-
-    def request(self, method, params, error=False):
-        self.next_id += 1
-        request_id = self.next_id
-        self.send({'id': request_id, 'method': method, **({'params': params} if params is not None else {})})
-        while True:
-            message = self.messages.get(timeout=15)
-            if isinstance(message, Exception):
-                raise message
-            if message.get('method') == 'workspace/codeLens/refresh':
-                self.send({'id': message['id'], 'result': None})
-            elif message.get('id') == request_id and 'method' not in message:
-                assert ('error' in message) == error, message
-                return message.get('error' if error else 'result')
-            else:
-                assert message.get('method') not in ('window/showMessageRequest', 'window/showDocument'), message
-                self.notifications.append(message)
-
-    def open(self, path, text):
-        self.notify('textDocument/didOpen', {'textDocument': {
-            'uri': path.as_uri(), 'languageId': 'http', 'version': 1, 'text': text}})
-        return self.lenses(path)
-
-    def lenses(self, path):
-        return self.request('textDocument/codeLens', {'textDocument': {'uri': path.as_uri()}})
-
-    def execute(self, command):
-        return self.request('workspace/executeCommand', command)
-
-    def wait_diagnostics(self, path, predicate):
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            message = self.messages.get(timeout=max(.01, deadline - time.monotonic()))
-            if isinstance(message, Exception):
-                raise message
-            if message.get('method') == 'workspace/codeLens/refresh':
-                self.send({'id': message['id'], 'result': None})
-                continue
-            self.notifications.append(message)
-            if (message.get('method') == 'textDocument/publishDiagnostics'
-                    and message['params']['uri'] == path.as_uri()
-                    and predicate(message['params']['diagnostics'])):
-                return
-        raise AssertionError('Dependent request diagnostics did not refresh')
-
-    def close(self):
-        try:
-            if self.process.poll() is None:
-                self.request('shutdown', None)
-                self.notify('exit', None)
-                self.process.stdin.close()
-                self.process.wait(timeout=5)
-        finally:
-            if self.process.poll() is None:
-                self.process.kill()
-                self.process.wait()
-            try:
-                self.process.stdin.close()
-            except BrokenPipeError:
-                pass
-            self.process.stdout.close()
-            errors = self.process.stderr.read().decode()
-            self.process.stderr.close()
-            assert not errors, errors
 
 
 def main():
@@ -247,8 +149,7 @@ def main():
                 assert expected in result.stdout + result.stderr
                 assert 'query-secret' not in result.stdout
             assert len(received) == 11, 'Unexpected request or unresolved variables were sent'
-            lsp.notify('textDocument/didChange', {'textDocument': {'uri': path.as_uri(), 'version': 2},
-                'contentChanges': [{'text': 'GET http://localhost\ninvalid header'}]})
+            lsp.change(path, 'GET http://localhost\ninvalid header')
             assert 'Environment: local' in lsp.lenses(path)[0]['command']['title']
 
             # Real JetBrains response handlers execute locally, never as an HTTP body.
@@ -302,13 +203,10 @@ def main():
             # Script syntax errors are diagnosed at the handler and block sending.
             broken = 'GET {{host}}/test\n\n> {% client.test("bad", function( { %}'
             other.write_text(broken)
-            lsp.notify('textDocument/didChange', {'textDocument': {'uri': other.as_uri(), 'version': 2},
-                'contentChanges': [{'text': broken}]})
+            lsp.change(other, broken)
             assert lsp.lenses(other), 'Script errors hid environment controls'
-            diagnostics = [message['params']['diagnostics'] for message in lsp.notifications
-                           if message.get('method') == 'textDocument/publishDiagnostics'
-                           and message['params']['uri'] == other.as_uri()]
-            assert diagnostics[-1][0]['range']['start']['line'] == 2
+            diagnostics = lsp.wait_diagnostics(other, lambda values: bool(values))
+            assert diagnostics[0]['range']['start']['line'] == 2
             run(other, success=False)
             assert len(received) == before
 
@@ -379,14 +277,20 @@ def main():
             lsp.execute(staging)
 
             # Invalid variables are diagnosed on their request, before sending.
-            lsp.notify('textDocument/didChange', {'textDocument': {'uri': other.as_uri(), 'version': 2},
-                'contentChanges': [{'text': '### Broken\nGET {{host}}/{{missing}}'}]})
+            lsp.change(other, '### Broken\nGET {{host}}/{{missing}}')
             lsp.lenses(other)
-            diagnostics = [message['params']['diagnostics'] for message in lsp.notifications
-                           if message.get('method') == 'textDocument/publishDiagnostics'
-                           and message['params']['uri'] == other.as_uri()]
-            assert diagnostics[-1][0]['range']['start']['line'] == 1
-            assert 'Undefined variable: missing' in diagnostics[-1][0]['message']
+            diagnostics = lsp.wait_diagnostics(other, lambda values: bool(values))
+            assert diagnostics[0]['range']['start']['line'] == 1
+            assert 'Undefined variable: missing' in diagnostics[0]['message']
+
+            # Rapid edits and a delayed old notification must not restore stale text.
+            lsp.change(other, 'GET {{host}}/{{olderMissing}}')
+            old_version = lsp.versions[other.as_uri()]
+            lsp.change(other, 'GET {{host}}/{{latestMissing}}')
+            lsp.notify('textDocument/didChange', {'textDocument': {'uri': other.as_uri(), 'version': old_version},
+                'contentChanges': [{'text': 'GET {{host}}/stale-text'}]})
+            diagnostics = lsp.wait_diagnostics(other, lambda values: any('latestMissing' in value['message'] for value in values))
+            assert all('olderMissing' not in value['message'] for value in diagnostics)
 
             # Ctrl-C cancels the real request future and leaves no partial response files.
             other.write_text('GET {{host}}/slow')

@@ -10,7 +10,8 @@ import sys
 import tarfile
 import tempfile
 
-from verify import Lsp, main as verify
+from integration import main as verify
+from support.lsp import Lsp
 
 ROOT = Path(__file__).resolve().parents[1]
 

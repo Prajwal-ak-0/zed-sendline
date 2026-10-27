@@ -1,5 +1,5 @@
 //! Bounded JavaScript execution over response data. No host IO is exposed to scripts.
-use crate::{globals::Mutation, http_client::HttpResponse, parser::ResponseHandler};
+use crate::{request::ResponseHandler, state::globals::Mutation, transport::HttpResponse};
 use anyhow::{Context as _, Result, bail};
 use rquickjs::{Context, Function, Runtime};
 use serde::{Deserialize, Serialize};

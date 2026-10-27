@@ -1,4 +1,7 @@
 //! Parse JetBrains-style request blocks without performing IO.
+pub mod environment;
+pub mod variables;
+
 use anyhow::{Result, bail};
 use std::collections::HashMap;
 

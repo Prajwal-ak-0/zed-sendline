@@ -1,4 +1,4 @@
-use crate::{parser::HttpRequest, variables::resolve_variables};
+use crate::{request::HttpRequest, request::variables::resolve_variables};
 use anyhow::{Result, bail};
 use base64::prelude::*;
 use reqwest::{Client, Method, Request};
@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn preserves_body_and_encodes_basic_auth() {
-        let file = crate::parser::parse_http_file(
+        let file = crate::request::parse_http_file(
             "POST https://example.com\nAuthorization: Basic user pass\nContent-Type: application/json\n\n{\"a\":1}",
         );
         let request = build_request(&Client::new(), &file.requests[0], &HashMap::new()).unwrap();

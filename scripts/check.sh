@@ -9,4 +9,4 @@ cargo clippy --locked -p sendline --all-targets -- -D warnings
 cargo test --locked -p sendline
 ./scripts/build.sh
 cargo clippy --locked -p sendline-extension --target wasm32-wasip2 -- -D warnings
-if [ "${1:-}" = --integration ]; then python3 scripts/verify.py; fi
+if [ "${1:-}" = --integration ]; then python3 tests/integration.py; fi

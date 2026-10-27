@@ -97,7 +97,7 @@ The portable task uses a versioned launcher registered in the private cache. It 
 Try the included requests with a loopback-only demo API:
 
 ```sh
-python3 scripts/demo_server.py
+python3 examples/server.py
 ```
 
 Open `examples/requests.http` and click a request's gutter play button.
@@ -132,6 +132,28 @@ The script receives `response.status`, the parsed JSON or text `response.body`, 
 The terminal shows passed and failed counts and a Cmd-clickable **Report** filename. That private JSON file contains test names, assertion details, and `client.log` or `console.log` output. Logs and assertion messages stay out of terminal output because they can contain tokens or response data.
 
 Scripts run in an embedded QuickJS engine; Node.js is not required. Each handler is limited to one second and 128 MiB, without filesystem, process, or network APIs. Script syntax is checked before sending, without executing the handler. Unsupported external script and body directives fail before sending.
+
+## Repository layout
+
+```text
+src/                       Zed WASM adapter and native-client installer
+crates/sendline/src/       native request runner
+  request/                 environments and variable resolution
+  response/                JavaScript response handlers and tests
+  state/                   persisted response variables
+  editor.rs                LSP controls and versioned diagnostics
+  request.rs               request syntax and source locations
+  response.rs              terminal output and response files
+  state.rs                 private files and environment selection
+  transport.rs             HTTP preparation and execution
+  runner.rs                request workflow
+  cli.rs                   command-line input
+  main.rs                  process entry point
+tests/                     real HTTP, LSP and installation checks
+scripts/                   build, install and release tools
+examples/                  requests, sample environments and demo API
+docs/                      architecture and ownership
+```
 
 ## Maintain the client
 

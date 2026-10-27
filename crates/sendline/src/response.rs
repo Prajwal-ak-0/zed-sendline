@@ -1,5 +1,7 @@
 //! Terminal presentation and private response artifacts. This module never sends a request.
-use crate::{http_client::HttpResponse, parser::HttpRequest, storage::Storage};
+pub mod script;
+
+use crate::{request::HttpRequest, state::Storage, transport::HttpResponse};
 use anyhow::Result;
 use std::{
     io::{self, IsTerminal, Write},
@@ -121,7 +123,7 @@ pub fn completed(response: &HttpResponse, requested_endpoint: &str, saved: &Save
 pub fn script_report(
     storage: &Storage,
     saved: &SavedResponse,
-    report: &crate::script::Report,
+    report: &crate::response::script::Report,
 ) -> Result<()> {
     let path = saved.body.with_extension("tests.json");
     storage.write(&path, &serde_json::to_vec_pretty(report)?)?;

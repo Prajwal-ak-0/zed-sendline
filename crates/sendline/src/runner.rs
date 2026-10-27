@@ -1,9 +1,12 @@
 //! Coordinate one saved request from source file to terminal result.
 use crate::{
-    environment::Environments,
-    globals::{self, Globals},
-    http_client, output, parser, script,
-    storage::Storage,
+    request::{self, environment::Environments},
+    response::{self, script},
+    state::{
+        Storage,
+        globals::{self, Globals},
+    },
+    transport,
 };
 use anyhow::{Context, Result, bail};
 use std::{
@@ -48,7 +51,7 @@ pub async fn run(
     storage: &Storage,
 ) -> Result<bool> {
     let text = std::fs::read_to_string(path).context("Cannot read the .http file")?;
-    let file = parser::parse_http_file(&text);
+    let file = request::parse_http_file(&text);
     let request = file.request_at(line - 1)?;
     let environments = Environments::load(path)?;
     let selected = override_environment
@@ -71,25 +74,25 @@ pub async fn run(
     let mut variables: HashMap<_, _> = globals::variables(&saved_globals);
     variables.extend(environments.variables(selected.as_deref())?);
     variables.extend(file.variables.clone());
-    let prepared = http_client::prepare(request, &variables)?;
+    let prepared = transport::prepare(request, &variables)?;
     let endpoint = prepared.endpoint();
-    output::start(selected.as_deref(), request, &endpoint)?;
+    response::start(selected.as_deref(), request, &endpoint)?;
     let response = tokio::select! {
-        result = http_client::execute(prepared) => result,
+        result = transport::execute(prepared) => result,
         _ = tokio::signal::ctrl_c() => {
-            output::cancelled();
+            response::cancelled();
             return Ok(false);
         }
     };
     let response = match response {
         Ok(response) => response,
         Err(error) => {
-            output::failed(&error);
+            response::failed(&error);
             return Ok(false);
         }
     };
-    let saved = output::save(storage, request, &response)?;
-    output::completed(&response, &endpoint, &saved);
+    let saved = response::save(storage, request, &response)?;
+    response::completed(&response, &endpoint, &saved);
     let mut success = response.status.is_success();
     if let Some(handler) = &request.response_handler {
         let mut report = script::run(handler, &response, &saved_globals).unwrap_or_else(|error| {
@@ -106,7 +109,7 @@ pub async fn run(
             report.error = Some(format!("Cannot save response-script variables: {error}"));
         }
         success &= report.successful();
-        output::script_report(storage, &saved, &report)?;
+        response::script_report(storage, &saved, &report)?;
     }
     Ok(success)
 }
