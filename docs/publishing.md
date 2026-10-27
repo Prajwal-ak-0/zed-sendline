@@ -25,6 +25,8 @@ A development installation with a pre-seeded native cache does not prove that th
 
 Read Zed's [contribution guidelines](https://github.com/zed-industries/extensions/blob/main/CONTRIBUTING.md), [AI policy](https://github.com/zed-industries/extensions/blob/main/AI_POLICY.md), and [publishing guide](https://zed.dev/docs/extensions/publishing/publishing-guide).
 
+For a first contribution, the account owner must review and sign Zed's [Contributor License Agreement](https://zed.dev/cla). If the CLA bot has already flagged the PR, the owner can post `@cla-bot check` after signing to refresh that check.
+
 Zed requires a human who understands and owns the submission. It does not accept autonomous agent contributions or AI-generated maintainer comments. The owner must review the exact change and own the PR description and any replies. AI may assist with code and with editing the owner's wording, as allowed by that policy.
 
 The registry change adds exactly one HTTPS submodule, its `extensions.toml` entry, and the submodule commit. Use a commit reachable from `main`, with the same version as the public native release. Run `pnpm sort-extensions` and the registry's validation checks.
