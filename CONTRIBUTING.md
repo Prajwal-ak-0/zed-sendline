@@ -27,3 +27,5 @@ Keep the repository independent. Its build and tests must work without any sibli
 Run `python3 scripts/preflight.py`, `scripts/check.sh --integration`, `scripts/package.sh`, and `python3 tests/installation.py`. Inspect the installed build in Zed before committing. Tag the reviewed commit with its manifest version, for example `v0.5.0`. The release workflow builds four native targets and creates a draft only after every build passes. Publish that draft after checking all assets. The Zed registry submission is a separate review; see [Zed publishing](https://zed.dev/docs/extensions/publishing/publishing-guide).
 
 Keep commits and PRs focused. Preserve the upstream license attribution. Do not add AI authors or co-authors.
+
+The full release, public-download verification, clean-profile test, and registry submission procedure is in [publishing](docs/publishing.md).
