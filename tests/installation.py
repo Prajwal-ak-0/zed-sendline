@@ -45,9 +45,12 @@ def main():
         archive = next((data / 'assets').glob('*.tar.gz'))
         with tarfile.open(archive) as packaged:
             contents = packaged.extractfile('sendline').read()
-            assert packaged.getnames() == ['sendline', 'LICENSE']
-        checksum = archive.with_name(archive.name + '.sha256').read_text().split()[0]
+            assert packaged.getnames() == ['sendline', 'LICENSE', 'THIRD_PARTY_NOTICES.txt']
+            assert 'Fabrice Bellard' in packaged.extractfile('THIRD_PARTY_NOTICES.txt').read().decode()
+        checksum = archive.with_name(archive.name.removesuffix('.tar.gz') + '.sha256').read_text().split()[0]
         assert hashlib.sha256(contents).hexdigest() == checksum
+        archive_checksum = archive.with_name(archive.name + '.sha256').read_text().split()[0]
+        assert hashlib.sha256(archive.read_bytes()).hexdigest() == archive_checksum
         print('PASS: standalone installed client, versioned launcher and release archive checksum')
 
 

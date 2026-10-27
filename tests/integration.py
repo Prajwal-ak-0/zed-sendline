@@ -82,6 +82,11 @@ def main():
             lsp = start_lsp()
             lenses = lsp.open(path, text)
             assert len(lenses) == 1 and 'Environment: local' in lenses[0]['command']['title']
+            actions = lsp.request('textDocument/codeAction', {'textDocument': {'uri': path.as_uri()},
+                'range': {'start': {'line': 0, 'character': 0}, 'end': {'line': 0, 'character': 0}},
+                'context': {'diagnostics': []}})
+            assert {action['arguments'][1] for action in actions if action['command'] == 'http.selectEnvironment'} == {'local', 'staging'}, 'Environments must be usable with CodeLens disabled'
+
             assert lenses[0]['range']['start'] == {'line': 0, 'character': 1}, lenses
             lsp.execute(lenses[0]['command'])
             choices = lsp.lenses(path)

@@ -41,7 +41,7 @@ struct Document {
 }
 
 impl Backend {
-    async fn commands(&self, uri: &Url) -> anyhow::Result<Vec<Command>> {
+    async fn commands(&self, uri: &Url, show_choices: bool) -> anyhow::Result<Vec<Command>> {
         // Environment controls must survive syntax errors while editing requests.
         let hint = {
             let documents = self.state.documents.read().await;
@@ -76,12 +76,19 @@ impl Backend {
             command: TOGGLE_ENV.into(),
             arguments: Some(vec![serde_json::json!(uri)]),
         }];
-        if expanded {
+        if expanded || show_choices {
             commands.extend(names.into_iter().map(|name| Command {
-                title: if selected.as_deref() == Some(&name) {
-                    format!("✓ {name}")
-                } else {
-                    name.clone()
+                title: {
+                    let title = if show_choices {
+                        format!("Sendline: use environment {name}")
+                    } else {
+                        name.clone()
+                    };
+                    if selected.as_deref() == Some(&name) {
+                        format!("✓ {title}")
+                    } else {
+                        title
+                    }
                 },
                 command: SET_ENV.into(),
                 arguments: Some(vec![serde_json::json!(uri), serde_json::json!(name)]),
@@ -202,7 +209,7 @@ impl LanguageServer for Backend {
     }
     async fn code_lens(&self, params: CodeLensParams) -> Result<Option<Vec<CodeLens>>> {
         let uri = params.text_document.uri;
-        let Ok(commands) = self.commands(&uri).await else {
+        let Ok(commands) = self.commands(&uri, false).await else {
             return Ok(Some(vec![]));
         };
         // Anchor inside the first nonempty line so the header remains separate
@@ -231,12 +238,13 @@ impl LanguageServer for Backend {
         ))
     }
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
-        let Ok(commands) = self.commands(&params.text_document.uri).await else {
+        let Ok(commands) = self.commands(&params.text_document.uri, true).await else {
             return Ok(Some(vec![]));
         };
         Ok(Some(
             commands
                 .into_iter()
+                .filter(|command| command.command == SET_ENV)
                 .map(CodeActionOrCommand::Command)
                 .collect(),
         ))

@@ -41,7 +41,7 @@ impl SendlineExtension {
                 .iter()
                 .find(|asset| asset.name == asset_name)
                 .ok_or_else(|| format!("Missing release asset: {asset_name}"))?;
-            let checksum_name = format!("{asset_name}.sha256");
+            let checksum_name = format!("sendline-{VERSION}-{target}.sha256");
             let checksum_asset = release
                 .assets
                 .iter()

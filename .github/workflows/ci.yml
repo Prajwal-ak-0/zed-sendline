@@ -42,3 +42,24 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: scripts/package.sh
       - run: python3 tests/installation.py
+
+  registry-package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.90.0
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+      - name: Build with Zed's registry packager
+        env:
+          ZED_EXTENSION_CLI_SHA: 9ee3c503a4bbbc6b4a0f8a789acca4871d773223
+        run: |
+          curl --fail --location --silent --show-error "https://zed-extension-cli.nyc3.digitaloceanspaces.com/$ZED_EXTENSION_CLI_SHA/x86_64-unknown-linux-gnu/zed-extension" -o /tmp/zed-extension
+          chmod +x /tmp/zed-extension
+          /tmp/zed-extension --scratch-dir .build/registry --source-dir . --output-dir dist/registry
+      - uses: actions/upload-artifact@v4
+        with:
+          name: registry-package
+          path: dist/registry/
+          if-no-files-found: error

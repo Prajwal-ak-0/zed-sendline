@@ -1,8 +1,8 @@
 # Sendline for Zed
 
-A local HTTP client for `.http` and `.rest` files. Release candidate for macOS and Linux.
+A local HTTP client for `.http` and `.rest` files, with a native backend for macOS and GNU/Linux on Intel and ARM64.
 
-This repository is being prepared for publication. Sendline is not yet listed in Zed's extension registry; use the local build below until a reviewed release is available.
+Native release downloads: [GitHub Releases](https://github.com/Prajwal-ak-0/zed-sendline/releases). Registry availability requires Zed's review and merge of the registry submission.
 
 Choose an environment in the header at the top of a `.http` file. Click the play button in the gutter beside any request to send it.
 
@@ -19,6 +19,28 @@ Content-Type: application/json
 
 {"name": "Test User", "role": "admin"}
 ```
+
+## Install from Zed
+
+After the registry submission is approved:
+
+1. Open **Extensions** in Zed and search for **Sendline**.
+2. Click **Install** and open your project folder and a `.http` file. Trust your own project when Zed asks, so its language server can run.
+3. To show the environment header in every HTTP file, add this to your Zed settings:
+
+```json
+{
+  "languages": {
+    "HTTP": {"code_lens": "on"}
+  }
+}
+```
+
+Merge the `HTTP` entry into your existing settings. Zed disables CodeLens by default. You can also select an environment through **editor: toggle code actions** with the cursor in the request file, even when CodeLens is off.
+
+The extension downloads and verifies the native client automatically. Rust, Node.js, a separate HTTP CLI, and project task definitions are not required for a registry installation. The first download needs access to GitHub release assets. Linux binaries require glibc 2.35 or newer, such as Ubuntu 22.04 or Debian 12. Windows is not supported in this release.
+
+If another HTTP extension owns the file's language server, uninstall that provider or configure `languages.HTTP.language_servers` as `["sendline"]`.
 
 ## Use environments
 
@@ -92,7 +114,7 @@ To rebuild after source changes:
 python3 scripts/install.py --enable-buttons
 ```
 
-The portable task uses a versioned launcher registered in the private cache. It contains no checkout paths. The WASM adapter downloads the matching GitHub release into Zed's extension work directory and verifies the executable's SHA-256 checksum. Before that release exists, use the installer above. A custom executable can be set with `lsp.sendline.binary.path` in Zed settings.
+The portable task uses a versioned launcher registered in the private cache. It contains no checkout paths. The WASM adapter downloads the matching GitHub release into Zed's extension work directory and verifies the executable's SHA-256 checksum. The development installer seeds that same cache without a download. A custom executable can be set with `lsp.sendline.binary.path` in Zed settings.
 
 Try the included requests with a loopback-only demo API:
 
