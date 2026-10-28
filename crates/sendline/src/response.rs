@@ -1,4 +1,5 @@
 //! Terminal presentation and private response artifacts. This module never sends a request.
+pub mod console;
 pub mod script;
 
 use crate::{request::HttpRequest, state::Storage, transport::HttpResponse};
@@ -120,13 +121,17 @@ pub fn completed(response: &HttpResponse, requested_endpoint: &str, saved: &Save
     println!("Cmd-click a filename to open it.\n");
 }
 
-pub fn script_report(
+pub fn save_script_report(
     storage: &Storage,
     saved: &SavedResponse,
     report: &crate::response::script::Report,
-) -> Result<()> {
+) -> Result<PathBuf> {
     let path = saved.body.with_extension("tests.json");
     storage.write(&path, &serde_json::to_vec_pretty(report)?)?;
+    Ok(path)
+}
+
+pub fn print_script_report(path: &std::path::Path, report: &crate::response::script::Report) {
     let passed = report.tests.iter().filter(|test| test.passed).count();
     let failed = report.tests.len() - passed;
     println!("Tests     {passed} passed · {failed} failed");
@@ -135,7 +140,6 @@ pub fn script_report(
     }
     // Assertion messages and logs can contain tokens or response data. Keep them private.
     println!("Report    {}\n", path.display());
-    Ok(())
 }
 
 fn clean(text: &str) -> String {

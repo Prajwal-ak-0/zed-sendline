@@ -17,6 +17,8 @@ class Lsp:
                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment)
         self.messages = queue.Queue()
         self.notifications = []
+        self.server_requests = []
+        self.open_document_success = True
         self.next_id = 0
         self.versions = {}
         threading.Thread(target=self.read, daemon=True).start()
@@ -55,6 +57,9 @@ class Lsp:
                 raise message
             if message.get('method') == 'workspace/codeLens/refresh':
                 self.send({'id': message['id'], 'result': None})
+            elif message.get('method') == 'window/showDocument':
+                self.server_requests.append(message)
+                self.send({'id': message['id'], 'result': {'success': self.open_document_success}})
             elif message.get('id') == request_id and 'method' not in message:
                 assert ('error' in message) == error, message
                 return message.get('error' if error else 'result')
@@ -81,8 +86,8 @@ class Lsp:
     def lenses(self, path):
         return self.request('textDocument/codeLens', {'textDocument': {'uri': path.as_uri()}})
 
-    def execute(self, command):
-        return self.request('workspace/executeCommand', command)
+    def execute(self, command, error=False):
+        return self.request('workspace/executeCommand', command, error=error)
 
     def wait_diagnostics(self, path, predicate):
         # A CodeLens response is not a barrier for asynchronous diagnostics.

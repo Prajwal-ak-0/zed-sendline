@@ -29,6 +29,7 @@ jobs:
       - run: cargo test -p sendline --locked
       - run: cargo build -p sendline --locked
       - run: python3 tests/integration.py target/debug/sendline
+      - run: python3 tests/editor_execution.py target/debug/sendline
       - run: cargo clippy -p sendline-extension --target wasm32-wasip2 --locked -- -D warnings
       - run: cargo build -p sendline-extension --target wasm32-wasip2 --locked
 
@@ -58,6 +59,8 @@ jobs:
           curl --fail --location --silent --show-error "https://zed-extension-cli.nyc3.digitaloceanspaces.com/$ZED_EXTENSION_CLI_SHA/x86_64-unknown-linux-gnu/zed-extension" -o /tmp/zed-extension
           chmod +x /tmp/zed-extension
           /tmp/zed-extension --scratch-dir .build/registry --source-dir . --output-dir dist/registry
+      - run: curl --fail --location --silent --show-error https://api.zed.dev/extensions/http/0.0.1/download -o .build/http-language.tar.gz
+      - run: python3 tests/registry_package.py dist/registry --language-provider .build/http-language.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: registry-package

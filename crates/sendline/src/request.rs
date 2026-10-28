@@ -5,7 +5,7 @@ pub mod variables;
 use anyhow::{Result, bail};
 use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct HttpRequest {
     pub line: u32,
     pub end_line: u32,
@@ -17,7 +17,7 @@ pub struct HttpRequest {
     pub response_handler: Option<ResponseHandler>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ResponseHandler {
     pub line: u32,
     pub source: String,

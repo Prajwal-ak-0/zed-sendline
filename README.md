@@ -1,46 +1,47 @@
-# Sendline for Zed
+# Sendline HTTP Client for Zed
 
-A local HTTP client for `.http` and `.rest` files, with a native backend for macOS and GNU/Linux on Intel and ARM64.
+Run `.http` requests from Zed, choose an environment, and open private response files. Sendline is a language-server extension for the existing **HTTP** language. The **HTTP** extension owns syntax highlighting. Sendline owns execution, environments, diagnostics, and response tests.
 
-Native release downloads: [GitHub Releases](https://github.com/Prajwal-ak-0/zed-sendline/releases). Registry availability requires Zed's review and merge of the registry submission.
+![Sendline workflow diagram](docs/images/sendline-workflow.png)
 
-Choose an environment in the header at the top of a `.http` file. Click the play button in the gutter beside any request to send it.
+The diagram describes the integration. It is not an editor screenshot.
 
-The integrated terminal shows the endpoint, environment, status, duration, response size, and content type. The request editor keeps focus. Cmd-click the **Response** path to open the formatted body, or the **Headers** path to inspect headers. Sending a request does not open a response tab automatically.
+Native downloads are available in [GitHub Releases](https://github.com/Prajwal-ak-0/zed-sendline/releases). Installation from Zed's registry awaits review and publication of [the registry submission](https://github.com/zed-industries/extensions/pull/8154).
 
 ```http
 ### Get current user
 GET {{baseUrl}}/api/users/me
 Authorization: Bearer {{token}}
 
-### Create user
-POST {{baseUrl}}/api/users
-Content-Type: application/json
-
-{"name": "Test User", "role": "admin"}
+> {%
+client.test("HTTP 200", () => client.assert(response.status === 200));
+%}
 ```
 
 ## Install from Zed
 
 After the registry submission is approved:
 
-1. Open **Extensions** in Zed and search for **Sendline**.
-2. Click **Install** and open your project folder and a `.http` file. Trust your own project when Zed asks, so its language server can run.
-3. To show the environment header in every HTTP file, add this to your Zed settings:
+1. Install **HTTP** in Zed's Extensions view for syntax highlighting and file recognition.
+2. Install **Sendline HTTP Client**, extension ID `sendline-http-lsp`.
+3. Open your project and a `.http` file. Trust your own project when Zed asks.
+4. Enable inline controls in your Zed settings:
 
 ```json
 {
   "languages": {
-    "HTTP": {"code_lens": "on"}
+    "http": {"code_lens": "on"}
   }
 }
 ```
 
-Merge the `HTTP` entry into your existing settings. Zed disables CodeLens by default. You can also select an environment through **editor: toggle code actions** with the cursor in the request file, even when CodeLens is off.
+The published HTTP provider uses the language name `http`, in lowercase. Merge that entry into your existing settings. For `.rest` files, select `http` in Zed's language picker. With CodeLens disabled, place your cursor in a request and run **editor: toggle code actions**. Sending, cancellation, environment choices, and response links are available there too.
 
-The extension downloads and verifies the native client automatically. Rust, Node.js, a separate HTTP CLI, and project task definitions are not required for a registry installation. The first download needs access to GitHub release assets. Linux binaries require glibc 2.35 or newer, such as Ubuntu 22.04 or Debian 12. Windows is not supported in this release.
+Sendline downloads and verifies its matching native backend automatically. It requires no Rust installation, Node.js runtime, external HTTP CLI, or project task file. macOS and GNU/Linux on Intel and ARM64 are supported. Linux requires glibc 2.35 or newer. Windows is not supported.
 
-If another HTTP extension owns the file's language server, uninstall that provider or configure `languages.HTTP.language_servers` as `["sendline"]`.
+If you use another HTTP language server, set `languages.http.language_servers` to `["sendline"]` to select Sendline. Keep the HTTP language extension installed.
+
+See [the comparison with existing HTTP extensions](docs/comparison.md) for the scope and setup differences.
 
 ## Use environments
 
@@ -73,56 +74,52 @@ Your choice is shared by files using the same environment directory and survives
 
 The nearest parent directory containing either environment file supplies both files. Private values override public values. A selected environment overrides `$shared` within each file. File declarations such as `@name = value` override environment variables. Nested variables and JSON objects or arrays work. For example, `{{account.ids[0]}}` reads a structured environment value. Missing and circular variables stop the request before it is sent.
 
-## Run requests
+## Send requests and inspect responses
 
-The gutter play button uses Zed's native task system. It saves the current `.http` file before sending, so the request matches your latest edits. The terminal tab is reused for subsequent requests. Ctrl-C in that terminal cancels an active request. Missing variables appear as diagnostics on their request lines before sending. An active request must finish or be stopped before rerunning the task.
+Click **Send Request** above an endpoint. Sendline executes the current editor text, including unsaved edits. The document must have a file path so environment files can be found. It rejects a stale button action if the document changed before the action arrived.
 
-Example output:
+The response console is an editor document with the environment, redacted endpoint, HTTP status, duration, size, and content type. It opens metadata without requesting editor focus. The response body stays in a separate file until you choose **Response** or **Open response**. Headers and test reports have their own links.
 
-```text
-Sendline  ·  local  ·  Get current user
-GET http://localhost:8000/api/users/me
-200 OK  ·  24 ms  ·  1.2 KiB  ·  application/json
-Response  /Users/you/Library/Caches/sendline/responses/...json
-Headers   /Users/you/Library/Caches/sendline/responses/...headers.txt
-Cmd-click a filename to open it.
-```
+While a request is active, **Cancel Request** replaces its send control. Only one request runs per document. Other documents can run independently. Closing the request document or stopping the language server cancels its active operation.
 
-JSON responses are formatted into `.json` files. Text and binary bodies are preserved in `.txt` and `.bin` files. HTTP errors keep their response bodies and headers and mark the task unsuccessful.
+HTTP errors and failed response tests preserve the body, headers, and report. Network failures appear in the console. Request authorization, body values, URL user information, and query values stay out of console metadata. Script logs and assertion messages remain in the private test report because they may contain response data.
 
-Request authorization and body values are not printed to the terminal. URL user information and query values are hidden. Responses can contain sensitive server data. The cache directory is private to your user, and response files use owner-only permissions on macOS and Linux. Response files remain available after a language-server restart.
+The console is a generated, read-only metadata file. Each run has its own files, so overlapping work cannot overwrite another run's console. Response files remain available after a language-server restart. Zed's Markdown preview can render console links; the request's **Response**, **Headers**, and **Tests** controls also open those files directly.
 
-On macOS the cache is `~/Library/Caches/sendline`. On Linux it is `$XDG_CACHE_HOME/sendline`, or `~/.cache/sendline`. `SENDLINE_HOME` overrides the location for tests.
+Inside Zed, state and artifacts live under `state/` in Zed's designated `extensions/work/sendline-http-lsp` directory. Sendline does not write project tasks, global settings, or a launcher in your home cache.
 
-## Install locally
+This version uses inline Send Request controls and an editor response console. It does not supply gutter tasks or automatically open a terminal.
 
-Requires Rust installed through rustup and Zed:
+## Build and install locally
+
+Requires Rust through rustup and Zed:
 
 ```sh
 ./scripts/package.sh
-python3 scripts/install.py --enable-buttons
+python3 scripts/install.py --replace-legacy --enable-buttons
 ```
 
-The packaging script downloads the pinned HTTP grammar and official WASI SDK, then compiles the extension and native backend. The installer copies the compiled package into Zed's extensions directory. It only updates an installation created by this script. The native client is copied into the extension's versioned work directory. You can move or remove the source checkout after installation.
+The development installer preserves this checkout's previous Sendline installation in Zed's `extensions/local-backups` directory. It refuses to replace an installation it does not own. Install the **HTTP** language extension separately, restart the language server, then close and reopen your `.http` file.
 
-After updating an open Zed window, run **editor: restart language server** in a `.http` file, then close and reopen that file. Zed can retain the old header click action across a server restart. The header may sit just above the first visible line, so scroll to the top. If it remains hidden, run **editor: toggle code lens**. The language server must start once to register the versioned request runner used by the gutter buttons.
+The package contains the WASM adapter and manifest. It has no grammar, highlighting queries, or task definitions. The development installer seeds the native binary in the same versioned extension work directory used by registry downloads. A custom backend can be selected with `lsp.sendline.binary.path`; its version must match the extension.
 
-To rebuild after source changes:
-
-```sh
-./scripts/build.sh
-python3 scripts/install.py --enable-buttons
-```
-
-The portable task uses a versioned launcher registered in the private cache. It contains no checkout paths. The WASM adapter downloads the matching GitHub release into Zed's extension work directory and verifies the executable's SHA-256 checksum. The development installer seeds that same cache without a download. A custom executable can be set with `lsp.sendline.binary.path` in Zed settings.
-
-Try the included requests with a loopback-only demo API:
+Try the loopback-only demo:
 
 ```sh
 python3 examples/server.py
 ```
 
-Open `examples/requests.http` and click a request's gutter play button.
+Open `examples/requests.http`, choose `local`, and click **Send Request**.
+
+## Use the standalone CLI
+
+The native executable also supports terminal use:
+
+```sh
+./bin/sendline run --file examples/requests.http --line 3 --environment local
+```
+
+CLI output shows response metadata and file paths. Ctrl-C cancels the request. The CLI's default private cache is `~/Library/Caches/sendline` on macOS and `$XDG_CACHE_HOME/sendline` or `~/.cache/sendline` on Linux. `SENDLINE_HOME` overrides that location. Zed supplies its own extension work directory instead.
 
 ## Supported requests
 
@@ -147,39 +144,13 @@ client.test("List items", function () {
 %}
 ```
 
-The script receives `response.status`, the parsed JSON or text `response.body`, `response.contentType`, and `response.headers.valueOf`, `valuesOf`, and `all`. `client.test` registers tests that run after the handler, in order. A failed assertion fails that test and the task; other tests still run. The response remains available even when a test or script fails.
+The script receives `response.status`, the parsed JSON or text `response.body`, `response.contentType`, and `response.headers.valueOf`, `valuesOf`, and `all`. `client.test` registers tests that run after the handler, in order. A failed assertion marks the run unsuccessful; other tests still run. The response remains available even when a test or script fails.
 
 `client.global.set`, `get`, `clear`, `clearAll`, and `isEmpty` work with JSON values. Saved values are available as `{{name}}` in later requests. JSON property and index paths work too, for example `{{items[0]["id"]}}` or `{{user.profile.name}}`. Globals persist privately in this client's cache and are isolated by environment directory and environment name. Environment variables override globals; file declarations override both. Concurrent requests merge their changes without overwriting unrelated variables. Use `client.global.clearAll()` to clear that environment's saved variables.
 
-The terminal shows passed and failed counts and a Cmd-clickable **Report** filename. That private JSON file contains test names, assertion details, and `client.log` or `console.log` output. Logs and assertion messages stay out of terminal output because they can contain tokens or response data.
+The response console shows passed and failed counts and a link to the private test report. That private JSON file contains test names, assertion details, and `client.log` or `console.log` output. Logs and assertion messages stay out of console metadata because they can contain tokens or response data.
 
 Scripts run in an embedded QuickJS engine; Node.js is not required. Each handler is limited to one second and 128 MiB, without filesystem, process, or network APIs. Script syntax is checked before sending, without executing the handler. Unsupported external script and body directives fail before sending.
-
-## Repository layout
-
-```text
-src/                       Zed WASM adapter and native-client installer
-crates/sendline/src/       native request runner
-  request/                 environments and variable resolution
-  response/                JavaScript response handlers and tests
-  state/                   persisted response variables
-  editor.rs                LSP controls and versioned diagnostics
-  request.rs               request syntax and source locations
-  response.rs              terminal output and response files
-  state.rs                 private files and environment selection
-  transport.rs             HTTP preparation and execution
-  runner.rs                request workflow
-  cli.rs                   command-line input
-  main.rs                  process entry point
-tests/                     real HTTP, LSP and installation checks
-scripts/                   build, install and release tools
-examples/                  requests, sample environments and demo API
-docs/                      architecture and ownership
-```
-
-## Maintain the client
-
-See [the architecture](docs/architecture.md) for module ownership and [contributing](CONTRIBUTING.md) for the update workflow. The HTTP client has its own repository, builds, installer, runtime state, and tests. It does not depend on the DB client.
 
 ## Compatibility
 
@@ -191,6 +162,6 @@ Sendline supports the request, environment, and inline response-test workflows d
 scripts/check.sh --integration
 ```
 
-The verification script uses a loopback HTTP server and real LSP and CLI processes. It checks inline selection, persistence across restarts, shared environments, the native task command, filenames containing shell characters, seven HTTP methods, private response links, Unicode bodies, HTTP errors, query redaction, response handlers, failed assertions, script limits, and variable chaining across CLI processes.
+The verification scripts use loopback HTTP servers and real LSP and CLI processes. They check inline selection, persisted environments, unsaved editor snapshots, stale controls, cancellation, document lifecycle, filenames containing shell characters, seven HTTP methods, private responses, Unicode bodies, HTTP errors, redaction, response handlers, script limits, and environment-scoped variable chaining.
 
 Based on [doani/zed-restclient](https://github.com/doani/zed-restclient), under the included MIT license.

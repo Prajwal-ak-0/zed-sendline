@@ -1,3 +1,0 @@
-name = "HTTP"
-grammar = "http"
-path_suffixes = ["http", "rest"]

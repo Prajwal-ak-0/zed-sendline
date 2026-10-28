@@ -1,4 +1,4 @@
-//! Command-line parsing is the boundary between Zed tasks and the request runner.
+//! Parse standalone CLI input and start the stdio language server.
 use crate::{editor, runner, state::Storage};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -22,7 +22,7 @@ enum Command {
         #[arg(long)]
         environment: Option<String>,
     },
-    /// Serve Zed's environment controls over stdio.
+    /// Serve request controls, environments, and diagnostics over standard LSP.
     Lsp {
         /// Require the version expected by the installed Zed extension.
         #[arg(long)]

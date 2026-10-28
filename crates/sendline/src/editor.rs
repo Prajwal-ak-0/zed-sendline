@@ -1,4 +1,5 @@
-//! Zed document state and environment controls. Request execution belongs to the native task.
+//! Standard LSP document state, environment controls, and request execution.
+mod execution;
 use crate::{
     request::{self, environment},
     response::script,
@@ -10,7 +11,7 @@ use crate::{
 };
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{Arc, OnceLock},
     time::Duration,
 };
 use tokio::sync::{RwLock, watch};
@@ -18,8 +19,8 @@ use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
-const TOGGLE_ENV: &str = "http.toggleEnvironments";
-const SET_ENV: &str = "http.selectEnvironment";
+const TOGGLE_ENV: &str = "sendline.toggleEnvironments";
+const SET_ENV: &str = "sendline.selectEnvironment";
 
 #[derive(Clone)]
 struct Backend {
@@ -32,6 +33,8 @@ struct EditorState {
     expanded: RwLock<HashSet<Url>>,
     storage: state::Storage,
     shutdown: watch::Sender<bool>,
+    runs: RwLock<HashMap<Url, execution::RunState>>,
+    show_document: OnceLock<bool>,
 }
 
 #[derive(Clone)]
@@ -100,7 +103,13 @@ impl Backend {
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        let supported = params
+            .capabilities
+            .window
+            .and_then(|window| window.show_document)
+            .is_some_and(|document| document.support);
+        let _ = self.state.show_document.set(supported);
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 code_lens_provider: Some(CodeLensOptions {
@@ -118,7 +127,13 @@ impl LanguageServer for Backend {
                     },
                 )),
                 execute_command_provider: Some(ExecuteCommandOptions {
-                    commands: vec![TOGGLE_ENV.into(), SET_ENV.into()],
+                    commands: vec![
+                        TOGGLE_ENV.into(),
+                        SET_ENV.into(),
+                        execution::SEND.into(),
+                        execution::CANCEL.into(),
+                        execution::OPEN.into(),
+                    ],
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -193,6 +208,12 @@ impl LanguageServer for Backend {
         let _ = self.client.code_lens_refresh().await;
     }
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        self.cancel_request(&params.text_document.uri).await;
+        self.state
+            .runs
+            .write()
+            .await
+            .remove(&params.text_document.uri);
         self.state
             .documents
             .write()
@@ -209,13 +230,10 @@ impl LanguageServer for Backend {
     }
     async fn code_lens(&self, params: CodeLensParams) -> Result<Option<Vec<CodeLens>>> {
         let uri = params.text_document.uri;
-        let Ok(commands) = self.commands(&uri, false).await else {
-            return Ok(Some(vec![]));
-        };
+        let commands = self.commands(&uri, false).await.unwrap_or_default();
         // Anchor inside the first nonempty line so the header remains separate
         // from every request's native gutter button, even at the start of a file.
-        let documents = self.state.documents.read().await;
-        let Some(document) = documents.get(&uri) else {
+        let Some(document) = self.state.documents.read().await.get(&uri).cloned() else {
             return Ok(Some(vec![]));
         };
         let (line, content) = document
@@ -226,33 +244,44 @@ impl LanguageServer for Backend {
             .unwrap_or((0, ""));
         let column = u32::from(!content.is_empty());
         let position = Position::new(line as u32, column);
-        Ok(Some(
-            commands
-                .into_iter()
-                .map(|command| CodeLens {
-                    range: Range::new(position, position),
-                    command: Some(command),
-                    data: None,
-                })
-                .collect(),
-        ))
+        let mut lenses: Vec<_> = commands
+            .into_iter()
+            .map(|command| CodeLens {
+                range: Range::new(position, position),
+                command: Some(command),
+                data: None,
+            })
+            .collect();
+        lenses.extend(self.request_lenses(&uri, &document).await);
+        Ok(Some(lenses))
     }
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
-        let Ok(commands) = self.commands(&params.text_document.uri, true).await else {
-            return Ok(Some(vec![]));
-        };
-        Ok(Some(
+        let uri = params.text_document.uri;
+        let commands = self.commands(&uri, true).await.unwrap_or_default();
+        let mut actions = self.request_actions(&uri, params.range.start.line).await;
+        actions.extend(
             commands
                 .into_iter()
                 .filter(|command| command.command == SET_ENV)
-                .map(CodeActionOrCommand::Command)
-                .collect(),
-        ))
+                .map(CodeActionOrCommand::Command),
+        );
+        Ok(Some(actions))
     }
     async fn execute_command(
         &self,
         params: ExecuteCommandParams,
     ) -> Result<Option<serde_json::Value>> {
+        if params.command == execution::SEND {
+            self.send_request(
+                params
+                    .arguments
+                    .first()
+                    .cloned()
+                    .ok_or_else(|| Error::invalid_params("Missing request snapshot"))?,
+            )
+            .await?;
+            return Ok(None);
+        }
         let uri = params
             .arguments
             .first()
@@ -287,6 +316,20 @@ impl LanguageServer for Backend {
                     )
                     .map_err(invalid)?;
                 self.state.expanded.write().await.remove(&uri);
+            }
+            execution::CANCEL => {
+                self.cancel_request(&uri).await;
+            }
+            execution::OPEN => {
+                self.open_result(
+                    &uri,
+                    params
+                        .arguments
+                        .get(1)
+                        .cloned()
+                        .ok_or_else(|| Error::invalid_params("Missing response artifact"))?,
+                )
+                .await?;
             }
             _ => return Err(Error::method_not_found()),
         }
@@ -387,8 +430,6 @@ fn diagnostic(message: String, line: u32) -> Diagnostic {
 }
 
 pub async fn run(storage: state::Storage) -> anyhow::Result<()> {
-    #[cfg(unix)]
-    storage.register_runner()?;
     let (service, socket) = LspService::new(|client| Backend {
         client,
         state: Arc::new(EditorState {
@@ -396,6 +437,8 @@ pub async fn run(storage: state::Storage) -> anyhow::Result<()> {
             expanded: RwLock::new(HashSet::new()),
             storage,
             shutdown: watch::channel(false).0,
+            runs: RwLock::new(HashMap::new()),
+            show_document: OnceLock::new(),
         }),
     });
     Server::new(tokio::io::stdin(), tokio::io::stdout(), socket)

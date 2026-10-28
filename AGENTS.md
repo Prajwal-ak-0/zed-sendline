@@ -6,7 +6,8 @@ This is a standalone repository. Do not depend on the PostgreSQL extension. Keep
 
 - `src/lib.rs`: versioned native download, checksum verification, and Zed integration.
 - `crates/sendline/src/cli.rs`: typed command-line arguments.
-- `crates/sendline/src/editor.rs`: open documents, environment controls, and diagnostics. It never sends HTTP requests.
+- `crates/sendline/src/editor.rs`: open documents, environment controls, diagnostics, and LSP dispatch.
+- `crates/sendline/src/editor/execution.rs`: versioned Send Request actions, per-document cancellation, and explicit artifact opening. It calls the shared runner and never writes protocol text to stdout.
 - `crates/sendline/src/request.rs`: `.http` syntax and request locations.
 - `crates/sendline/src/request/environment.rs`: public/private environment loading and precedence.
 - `crates/sendline/src/request/variables.rs`: bounded variable interpolation.
@@ -15,9 +16,12 @@ This is a standalone repository. Do not depend on the PostgreSQL extension. Keep
 - `crates/sendline/src/runner.rs`: select, prepare, send, save, report.
 - `crates/sendline/src/transport.rs`: the prepared request and HTTP transport. Display the prepared URL; never resolve a dynamic URL twice.
 - `crates/sendline/src/response.rs`: terminal presentation and saved response files.
+- `crates/sendline/src/response/console.rs`: private read-only console metadata and artifact links.
 - `crates/sendline/src/state.rs`: private atomic files and environment selection.
 
-Keep the request editor focused when sending. Open responses only after an explicit user action. Keep environment choices beside their header. Treat missing variables and removed environment selections as recoverable errors before sending.
+Use standard CodeLens, code actions, and showDocument requests. Keep language resources owned by the existing HTTP extension. Never add a bundled grammar, task definition, or home-cache runner link. Zed mode stores state only in its designated extension work directory.
+
+Open the metadata console without requesting focus. Open response bodies only after an explicit user action. Keep environment choices beside their header. Treat missing variables and removed environment selections as recoverable errors before sending.
 
 Save the HTTP response even when assertions or scripts fail. Keep script logs and assertion messages in the private report because they may contain response data or tokens. Syntax checks must compile handlers without executing them or sending requests.
 
@@ -27,7 +31,7 @@ Run `scripts/check.sh` for formatting, Clippy, unit tests, and native/WASM build
 
 Use only disposable loopback fixtures for verification. Do not copy real project tokens into demos. Do not print authorization values, bodies, URL user information, or query values. Preserve response bodies and headers privately, including HTTP error responses.
 
-After changing the UI integration, inspect it in Zed. Check environment selection, send, cancellation, diagnostics, and Cmd-clicking a response filename. After a language-server rebuild, close and reopen the demo file to avoid Zed retaining an old CodeLens action.
+After changing the UI integration, inspect it in Zed. Check environment selection, inline send, cancellation, diagnostics, and response/header/test links. After a language-server rebuild, close and reopen the demo file to avoid Zed retaining an old CodeLens action.
 
 Replace the native executable by rename, as `scripts/build.sh` does. Never overwrite a running executable in place.
 

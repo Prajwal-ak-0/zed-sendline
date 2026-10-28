@@ -94,7 +94,14 @@ impl zed::Extension for SendlineExtension {
         Ok(zed::Command {
             command: self.binary(id, worktree)?,
             args: vec!["lsp".into(), "--extension-version".into(), VERSION.into()],
-            env: vec![],
+            env: vec![(
+                "SENDLINE_HOME".into(),
+                std::env::current_dir()
+                    .map_err(|error| error.to_string())?
+                    .join("state")
+                    .to_string_lossy()
+                    .into_owned(),
+            )],
         })
     }
 }

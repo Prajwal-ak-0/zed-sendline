@@ -20,23 +20,22 @@ def main():
     with tempfile.TemporaryDirectory(prefix='sendline-install-') as temporary:
         data = Path(temporary) / 'Zed data with spaces'
         subprocess.run([sys.executable, str(ROOT / 'scripts/install.py'), '--data-dir', str(data)], check=True)
-        installed = data / 'extensions/installed/sendline'
+        installed = data / 'extensions/installed/sendline-http-lsp'
         assert (installed / 'extension.wasm').is_file()
-        assert (installed / 'grammars/http.wasm').is_file()
-        task = json.loads((installed / 'languages/http/tasks.json').read_text())[0]
-        assert str(ROOT) not in task['command']
-        executable = next((data / 'extensions/work/sendline').glob('*/sendline'))
-        # The installed binary and generated task are exercised through the full
-        # integration suite, with separate state and no source binary on PATH.
+        assert not (installed / 'grammars').exists()
+        assert not (installed / 'languages').exists()
+        executable = next((data / 'extensions/work/sendline-http-lsp').glob('*/sendline'))
+        # Exercise the installed executable with separate state and no source
+        # binary on PATH, through both CLI and LSP entry points.
         sys.argv = [sys.argv[0], str(executable)]
         verify()
+        subprocess.run([sys.executable, str(ROOT / 'tests/editor_execution.py'), str(executable)], check=True)
         env = {**os.environ, 'SENDLINE_HOME': str(Path(temporary) / 'private cache')}
         lsp = Lsp(executable, env)
         try:
             lsp.request('initialize', {'capabilities': {}})
             lsp.notify('initialized', {})
-            runners = list((Path(env['SENDLINE_HOME']) / 'runners').iterdir())
-            assert len(runners) == 1 and runners[0].resolve() == executable.resolve()
+            assert not (Path(env['SENDLINE_HOME']) / 'runners').exists()
         finally:
             lsp.close()
         subprocess.run([sys.executable, str(ROOT / 'scripts/release_asset.py'), str(executable),
@@ -51,7 +50,7 @@ def main():
         assert hashlib.sha256(contents).hexdigest() == checksum
         archive_checksum = archive.with_name(archive.name + '.sha256').read_text().split()[0]
         assert hashlib.sha256(archive.read_bytes()).hexdigest() == archive_checksum
-        print('PASS: standalone installed client, versioned launcher and release archive checksum')
+        print('PASS: standalone installed client, LSP-only frontend and release archive checksum')
 
 
 if __name__ == '__main__':

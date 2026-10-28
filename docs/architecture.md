@@ -1,61 +1,52 @@
-# HTTP client architecture
+# Sendline ownership and execution
 
-The editor owns request text. A native Zed task owns each HTTP operation. The language server owns environment controls and diagnostics. This keeps sending independent of CodeLens visibility and preserves Zed's task cancellation and terminal behavior.
+The existing HTTP language extension owns file recognition and highlighting. Sendline registers one language server for HTTP. It ships no language configuration, grammar, query, task, or global launcher.
 
-## Request flow
+## Execution flow
 
-`cli` parses the task arguments. `runner` reads the file, selects the request, loads the chosen environment, and applies file variables. `transport::prepare` resolves variables and builds the request once. The displayed endpoint comes from that prepared request.
+The editor sends a versioned document snapshot through LSP. Sendline supplies a Send Request CodeLens for each parsed request and equivalent code actions. The action contains the document URI, source line, and document version. The server rejects stale actions before preparing or sending a request.
 
-`transport::execute` sends the prepared request with verified TLS, redirect limits, timeouts, and a response-size limit. It records the final redirected endpoint. `response` saves the body and headers through `state`, then prints a concise result with editor-openable paths. Ctrl-C drops the request future and does not publish a partial response.
+`runner::prepare` parses that snapshot, chooses an environment, loads private variables and saved globals, validates the response handler, and resolves the endpoint once. `runner::execute` sends the prepared operation, saves the response, runs bounded JavaScript, merges global mutations, and saves the test report. It writes no protocol or terminal output.
 
-## Editor flow
+The CLI and LSP are separate presentation adapters over that same runner. The CLI prints metadata and handles Ctrl-C. `editor::execution` owns the LSP execution lifecycle and standard `window/showDocument` requests.
 
-`editor` keeps open document text and per-document expansion state. Environment selection is stored by environment directory, so related request files share a choice. Changing the selection does not send requests. Invalid variables are diagnosed on their request line.
+## Request lifecycle
 
-Environment controls read the document's environment hint independently of request parsing. Incomplete requests and invalid response handlers can produce diagnostics, but cannot hide the selector. The execution parser joins multiline query parameters and separates HTTP bodies from inline response handlers. The language server compiles scripts for syntax checks without executing them.
+Each open document has either a running operation or its last completed result. A running operation owns a cancellation channel. Duplicate sends in that document are rejected. Requests in separate documents can run independently.
 
-## Response-handler flow
+Cancellation, document closure, and server shutdown drop the HTTP future. A run ID prevents an older operation from replacing the state of a reopened document. Each run owns a separate console file so completion and cancellation cannot overwrite a later run's metadata.
 
-`runner` validates the selected handler before sending. After receiving and saving the HTTP response, it calls `script::run(handler, response, globals)`. The embedded QuickJS engine receives only response data and a snapshot of saved variables. It has memory and execution limits and no host IO APIs. `script_runtime.js` implements the documented client methods, queues tests, and returns results and variable mutations. The native code handles the result as data.
+The server asks Zed to open the private console with `takeFocus: false` before sending. If the editor cannot open it, no request is sent. Explicit Response, Headers, Tests, and Console actions open only the stored artifacts of that document, with focus requested. Arbitrary file paths are not accepted as action arguments.
 
-`state::globals` scopes state by environment directory and environment name. It records mutations rather than replacing a stale snapshot: acquire a per-scope file lock, read the current values, apply the mutations, and atomically publish the private JSON file. Network and script execution never hold this lock. A top-level script error or interrupted execution discards its mutations. Completed tests can save variables even if another test fails.
-
-`response` writes the private test report beside the response, then prints counts and a filename. Test names, assertion details, and script logs can contain response data, so they remain in the report. HTTP failures, script failures, and assertion failures all produce a failing task exit status; an HTTP response is preserved whenever one was received.
-
-The alternatives were to recognize selected JavaScript expressions or launch Node.js. Recognizing expressions would break ordinary JavaScript control flow and closures. A Node subprocess would add a runtime requirement and host capabilities. An embedded engine supports JavaScript semantics within the existing native executable.
-
-A removed saved environment produces an unselected state. The user must make another choice before sending. The client never silently substitutes another server.
-
-Zed can retain a CodeLens renderer and its old action when its text has not changed across a language-server restart. Closing and reopening the file creates fresh actions. The local update instructions include this step.
-
-## Boundaries
+## Module ownership
 
 | Module | Owns |
 | --- | --- |
-| `request` | Syntax, request names, source lines, headers, and bodies |
-| `request::environment` | Nearest environment directory and public/private precedence |
-| `request::variables` | Interpolation, dynamic values, cycles, and expansion limits |
-| `response::script` and `script_runtime.js` | Bounded JavaScript execution, response API, tests, and reports |
-| `state::globals` | Environment-scoped script state, mutations, and concurrent merges |
-| `transport` | Prepared requests, HTTP transport, and redacted endpoints |
-| `state` | Private directories and atomic state/artifact writes |
-| `response` | Terminal text, useful response filenames, and body formatting |
-| `runner` | The request workflow and cancellation |
-| `editor` | Zed protocol state and diagnostics |
-| `cli` | Command-line input and exit behavior |
+| `src/lib.rs` | Versioned native download, checksum, and extension-work-directory environment |
+| `editor.rs` | Open documents, environment controls, versioned diagnostics, and LSP dispatch |
+| `editor/execution.rs` | Request controls, cancellation, and explicit artifact opening |
+| `request` | Source blocks, headers, bodies, environments, and interpolation |
+| `runner` | Preparation, HTTP execution, saved responses, and response-handler orchestration |
+| `transport` | Verified TLS, bounded HTTP, same-origin redirects, and URL redaction |
+| `response` | Private body/header files and CLI presentation |
+| `response/console.rs` | Read-only metadata documents and artifact links |
+| `response/script` | Bounded QuickJS execution without host IO |
+| `state` | Private atomic artifacts and selected environments |
+| `state/globals` | Per-environment mutations under a short file lock |
+| `cli` | Standalone command parsing and process exit behavior |
 
-The alternative was to execute inside the language server. That would couple requests to editor protocol lifetime and make terminal focus, cancellation, and repeat execution less predictable. The native task keeps these concerns separate.
-
-The repository has its own Cargo workspace, native executable, WASM launcher, grammar, installer, and verification scripts. There are no imports or build dependencies on the database extension.
+The globals lock covers only reading, merging, and atomically publishing state. HTTP and JavaScript never hold that lock. Script logs and assertion details stay in the private report. Received responses survive test failures.
 
 ## Installation boundary
 
-The WASM adapter honors an explicit LSP executable setting or `sendline` on PATH. Otherwise it downloads the release matching the manifest version and platform, verifies the extracted executable against the release checksum, and installs it inside Zed's extension work directory. It never embeds a developer checkout path.
+The WASM adapter first checks the explicit executable setting and PATH. Otherwise it downloads the manifest-matching native release, verifies the executable checksum, and installs it in Zed's extension work directory. It supplies that directory's `state` child as `SENDLINE_HOME`. Runtime artifacts therefore stay inside the extension environment.
 
-Zed language tasks are static and cannot receive the WASM adapter's resolved executable path. When the native language server starts, `state::register_runner` atomically publishes a versioned symlink in its private cache. The portable shell task runs through that link. Versioned links keep extension upgrades separate. The local installer seeds the same work directory, so local and published builds use the same task flow. The terminal task saves the current file, keeps editor focus, and reuses its terminal.
+The standalone CLI has a separate default home-cache location. No launcher or project task is created for Zed. Development installs can seed the native cache; public release tests separately verify anonymous downloads and the downloaded executable.
 
-Parsing reports errors per request block. A malformed neighboring request does not block a valid request, and selecting a malformed block never falls through to another endpoint.
+## Alternatives considered
 
-The language server watches the private globals directory revision once per second. An atomic write from a terminal task triggers diagnostics for open documents, so successful request chaining clears missing-variable errors without an editor change. The watcher stops on LSP shutdown and performs no network requests.
+The previous design bundled an HTTP grammar, runnable queries, a terminal task, and a home-cache launcher. That preserved gutter controls, but duplicated the existing HTTP language and depended on static task-to-binary indirection.
 
-Editor diagnostics carry the document version used for validation. Incoming older edits are ignored, and work for a changed or closed document is discarded before publication. Integration tests wait for the matching diagnostic notification rather than treating a CodeLens response as a synchronization barrier.
+A language-server-only package plus a user-installed global task would preserve terminal execution, but require manual task setup and executable discovery. Sendline instead uses standard CodeLens, code actions, and response documents. This keeps installation independent of project configuration and gives the existing HTTP extension one clear owner for language resources.
+
+The tradeoff is explicit: no bundled gutter tasks or automatic terminal. Zed's current extension API does not expose a general task-registration method or an arbitrary custom panel. The response console is an editor document.

@@ -32,6 +32,7 @@ jobs:
       - run: cargo test --locked -p sendline --target ${{ matrix.target }}
       - run: cargo build --locked --release -p sendline --target ${{ matrix.target }}
       - run: python3 tests/integration.py target/${{ matrix.target }}/release/sendline
+      - run: python3 tests/editor_execution.py target/${{ matrix.target }}/release/sendline
       - run: python3 scripts/release_asset.py target/${{ matrix.target }}/release/sendline ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the real header selection -> native task -> HTTP -> saved response flow."""
+"""Check the real header selection -> native client -> HTTP -> saved response flow."""
 import json
 import os
 from pathlib import Path
@@ -81,16 +81,16 @@ def main():
 
             lsp = start_lsp()
             lenses = lsp.open(path, text)
-            assert len(lenses) == 1 and 'Environment: local' in lenses[0]['command']['title']
+            assert len(lenses) == 1 + len(methods) and 'Environment: local' in lenses[0]['command']['title']
             actions = lsp.request('textDocument/codeAction', {'textDocument': {'uri': path.as_uri()},
                 'range': {'start': {'line': 0, 'character': 0}, 'end': {'line': 0, 'character': 0}},
                 'context': {'diagnostics': []}})
-            assert {action['arguments'][1] for action in actions if action['command'] == 'http.selectEnvironment'} == {'local', 'staging'}, 'Environments must be usable with CodeLens disabled'
+            assert {action['arguments'][1] for action in actions if action['command'] == 'sendline.selectEnvironment'} == {'local', 'staging'}, 'Environments must be usable with CodeLens disabled'
 
             assert lenses[0]['range']['start'] == {'line': 0, 'character': 1}, lenses
             lsp.execute(lenses[0]['command'])
             choices = lsp.lenses(path)
-            assert len(choices) == 3
+            assert len(choices) == 3 + len(methods)
             staging = next(lens['command'] for lens in choices if lens['command']['title'] == 'staging')
             lsp.execute(staging)
             assert 'Environment: staging' in lsp.lenses(path)[0]['command']['title']
@@ -135,15 +135,6 @@ def main():
                 if method != 'HEAD':
                     assert json.loads(response_path.read_text())['method'] == method
 
-            task = json.loads((ROOT / 'languages/http/tasks.json').read_text())[0]
-            assert task['save'] == 'current' and task['reveal'] == 'no_focus'
-            assert task['tags'] == ['http-request'] and not task['show_command']
-            command = task['command']
-            assert str(ROOT) not in command, 'Task depends on the source checkout'
-            shell_result = subprocess.run(command, shell=True, env={**environment, 'ZED_FILE': str(path), 'ZED_ROW': '3'},
-                capture_output=True, text=True, timeout=15, cwd=directory)
-            assert shell_result.returncode == 0, shell_result.stderr
-            assert not (directory / 'SHOULD_NOT_EXIST').exists(), 'Unsafe task quoting'
             for suffix, expected, success in [('/invalid', '422 Unprocessable Entity', False),
                                                ('/test?token=query-secret', '200 OK', True),
                                                ('/{{missing}}', 'Undefined variable: missing', False)]:
@@ -153,7 +144,7 @@ def main():
                 assert (result.returncode == 0) == success
                 assert expected in result.stdout + result.stderr
                 assert 'query-secret' not in result.stdout
-            assert len(received) == 11, 'Unexpected request or unresolved variables were sent'
+            assert len(received) == 10, 'Unexpected request or unresolved variables were sent'
             lsp.change(path, 'GET http://localhost\ninvalid header')
             assert 'Environment: local' in lsp.lenses(path)[0]['command']['title']
 
@@ -310,7 +301,7 @@ def main():
             stdout, stderr = slow.communicate(timeout=3)
             assert 'Cancelled.' in stdout.decode(), stdout + stderr
             assert set((directory / 'private-cache/responses').iterdir()) == saved
-            print('PASS: terminal task, safe filenames, 7 HTTP methods, private responses, Unicode, HTTP errors, URL redaction, exact dynamic preview, redirects, cancellation, request diagnostics, inline environments, stale-selection recovery, JavaScript handlers, assertions, private reports, bounded execution and environment-scoped variable chaining')
+            print('PASS: CLI and LSP, safe filenames, 7 HTTP methods, private responses, Unicode, HTTP errors, URL redaction, exact dynamic preview, redirects, cancellation, request diagnostics, inline environments, stale-selection recovery, JavaScript handlers, assertions, private reports, bounded execution and environment-scoped variable chaining')
     finally:
         if lsp:
             lsp.close()

@@ -57,18 +57,17 @@ impl Storage {
             .join(format!("{:016x}.json", hash.finish()))
     }
 
-    /// Zed's static language tasks cannot discover an extension's download path.
-    /// Register a versioned link to this running client in our private cache.
-    /// Replacing the link atomically makes concurrent LSP starts converge safely.
-    #[cfg(unix)]
-    pub fn register_runner(&self) -> Result<()> {
-        let directory = self.root.join("runners");
-        private_directory(&directory)?;
-        let temporary = tempfile::tempdir_in(&directory)?;
-        let link = temporary.path().join("runner");
-        std::os::unix::fs::symlink(std::env::current_exe()?, &link)?;
-        std::fs::rename(link, directory.join(env!("CARGO_PKG_VERSION")))?;
-        Ok(())
+    pub fn console_path(&self, source: &Path) -> PathBuf {
+        let mut hash = DefaultHasher::new();
+        source.hash(&mut hash);
+        self.response_path(
+            &format!(
+                "console-{:016x}-{}",
+                hash.finish(),
+                uuid::Uuid::new_v4().simple()
+            ),
+            "md",
+        )
     }
 
     fn selection_path(&self, directory: &Path) -> PathBuf {

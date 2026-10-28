@@ -1,31 +1,27 @@
-# Change the HTTP client
+# Change Sendline
 
 Read [the architecture](docs/architecture.md) to find the module that owns a change.
 
 ## Build and install
 
-Run `scripts/build.sh` after native changes. Existing requests and language servers keep their old executable until they exit.
+Run `scripts/package.sh` to compile the native backend and WASM adapter. The package contains no HTTP grammar or language resources. Install the existing HTTP language extension in Zed separately.
 
-Run `python3 scripts/install.py --enable-buttons` after changing WASM, language queries, or task definitions. The installer copies the native executable into Zed's versioned extension work directory. The checkout is not required after installation.
-
-After rebuilding the language server, restart it from a `.http` editor. Close and reopen that file so Zed creates fresh CodeLens actions.
-
-For a fresh checkout, `scripts/package.sh` also builds the pinned HTTP grammar with the official WASI SDK. `WASI_SDK_PATH` can point to an existing SDK.
+Run `python3 scripts/install.py --replace-legacy --enable-buttons` to install an owned development build. Existing servers keep their executable until they exit. Restart the language server, then close and reopen the request file so its controls belong to the new server.
 
 ## Verify a change
 
-Run `scripts/check.sh --integration`. This checks formatting, Clippy, unit tests, native and WASM builds, and the full LSP/task/HTTP flow against a loopback server.
+Run `scripts/check.sh --integration` for formatting, Clippy, unit tests, native and WASM builds, CLI regressions, and real stdio LSP request execution against loopback fixtures. Run `python3 tests/installation.py` against the packaged development install.
 
-For a visual review, run `python3 examples/server.py` and open `examples/requests.http` in Zed. Choose an environment, send a request, and inspect its response through the terminal filename. Sending keeps the request editor focused.
+`tests/editor_execution.py` verifies unsaved editor snapshots, stale action rejection, private metadata, explicit artifact opening, HTTP and test failures, cancellation, duplicate clicks, and document close/reopen behavior. Test only observable behavior and boundary contracts.
 
-Use temporary fixtures for new regressions. Check the observable request, response, or diagnostic. Avoid tests that only repeat an implementation detail.
+For a visual check, run `python3 examples/server.py` and open `examples/requests.http` in Zed. Select an environment, send a request, cancel another request, and open the response, headers, and test report. Verify that the console does not steal focus. Test code actions with CodeLens disabled too.
 
-Keep the repository independent. Its build and tests must work without any sibling extension checkout.
+Keep the repository independent of the database extension. Preserve upstream attribution. Never add AI authors or co-authors.
 
 ## Prepare a release
 
-Run `python3 scripts/preflight.py`, `scripts/check.sh --integration`, `scripts/package.sh`, and `python3 tests/installation.py`. Inspect the installed build in Zed before committing. Tag the reviewed commit with its manifest version, for example `v0.5.0`. The release workflow builds four native targets and creates a draft only after every build passes. Publish that draft after checking all assets. The Zed registry submission is a separate review; see [Zed publishing](https://zed.dev/docs/extensions/publishing/publishing-guide).
+Run `python3 scripts/preflight.py`, `scripts/check.sh --integration`, `scripts/package.sh`, and `python3 tests/installation.py`. Inspect the exact candidate in Zed. Push the reviewed source to `main` and wait for CI, including the official registry package builder.
 
-Keep commits and PRs focused. Preserve the upstream license attribution. Do not add AI authors or co-authors.
+Tag the reviewed commit with its manifest version, such as `v0.6.0`. Verify the four draft release targets before publishing. Run `python3 tests/release.py --tag v0.6.0` against anonymous public downloads.
 
-The full release, public-download verification, clean-profile test, and registry submission procedure is in [publishing](docs/publishing.md).
+The registry review is separate from the native release. Follow [the publication procedure](docs/publishing.md). The owner must review the submission wording and own replies to maintainers.

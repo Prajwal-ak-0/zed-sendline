@@ -1511,7 +1511,7 @@ checksum = "d767eb0aabc880b29956c35734170f26ed551a859dbd361d140cdbeca61ab1e2"
 
 [[package]]
 name = "sendline"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -1529,7 +1529,7 @@ dependencies = [
 
 [[package]]
 name = "sendline-extension"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "sha2",
  "zed_extension_api",

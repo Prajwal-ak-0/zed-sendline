@@ -81,6 +81,7 @@ def main():
         result = subprocess.check_output([str(host_binary), '--version'], text=True).strip()
         assert result == f'sendline {version}', result
         subprocess.run([sys.executable, str(ROOT / 'tests/integration.py'), str(host_binary)], check=True)
+        subprocess.run([sys.executable, str(ROOT / 'tests/editor_execution.py'), str(host_binary)], check=True)
     print('PASS: anonymous release downloads and full integration flow using the published host executable')
 
 
